@@ -8,6 +8,8 @@ struct Order
 {
     std::string clientOrderId;
 
+    std::string systemOrderId;
+
     Instrument instrument;
 
     Side side;

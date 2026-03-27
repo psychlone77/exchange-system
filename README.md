@@ -1,5 +1,6 @@
-# Flower Exchange - C++ Implementation
+# Flower Exchange System
 
+```plaintext
 flower_exchange/
 ├── CMakeLists.txt
 ├── data/
@@ -29,3 +30,4 @@ flower_exchange/
 │       ├── CSVOrderReader.cpp
 │       └── CSVExecutionWriter.cpp
 └── build/
+```

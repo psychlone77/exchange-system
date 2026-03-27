@@ -34,5 +34,5 @@ public:
     explicit OrderBook(Instrument inst) : instrumentType(inst) {}
 
     // The primary entry point for a validated order entering the book.
-    std::vector<ExecutionReportRow> processOrder(Order &order);
+    std::vector<ExecutionReportRow> processOrder(Order &order, const std::string &systemOrderId);
 };

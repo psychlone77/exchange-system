@@ -23,10 +23,11 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 # Gather all source files
 set(SOURCES
     src/main.cpp
-    # src/Validator.cpp
-    # src/OrderBook.cpp
-    # src/ExchangeApp.cpp
-    # src/CSVHandler.cpp
+    src/core/FlowerExchange.cpp
+    src/core/OrderBook.cpp
+    src/core/Validator.cpp
+    src/io/CSVOrderReader.cpp
+    src/io/CSVExecutionWriter.cpp
 )
 
 # Create the executable
