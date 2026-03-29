@@ -57,7 +57,7 @@ void CSVExecutionWriter::writeExecutions(const std::vector<ExecutionReportRow> &
     }
 
     // Write the exact comma-separated header required by the specifications
-    outFile << "Order ID,Client Order ID,Instrument,Side,Exec Status,Quantity,Price,Reason,Transaction Time\n";
+    outFile << "Order ID,Cl. Ord.ID,Instrument,Side,Exec Status,Quantity,Price,Reason,Transaction Time\n";
 
     // Set the output stream to format double values to exactly 2 decimal places (e.g., 55.00)
     outFile << std::fixed << std::setprecision(2);

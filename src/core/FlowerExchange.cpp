@@ -2,56 +2,107 @@
 #include "core/Validator.h"
 #include "io/Utils.h"
 
-FlowerExchange::FlowerExchange()
+FlowerExchange::FlowerExchange(std::shared_ptr<IOrderReader> reader, std::shared_ptr<IExecutionWriter> writer)
+    : reader(std::move(reader)), writer(std::move(writer))
 {
-    // Initialize the order books for the 5 strictly supported flower types.
-    // emplace() is highly efficient as it constructs the OrderBook directly inside the map.
-    orderBooks.emplace(Instrument::Rose, OrderBook(Instrument::Rose));
-    orderBooks.emplace(Instrument::Lavender, OrderBook(Instrument::Lavender));
-    orderBooks.emplace(Instrument::Lotus, OrderBook(Instrument::Lotus));
-    orderBooks.emplace(Instrument::Tulip, OrderBook(Instrument::Tulip));
-    orderBooks.emplace(Instrument::Orchid, OrderBook(Instrument::Orchid));
+    instrumentQueues[Instrument::Rose] = std::make_shared<ThreadSafeQueue<Order>>();
+    instrumentQueues[Instrument::Lavender] = std::make_shared<ThreadSafeQueue<Order>>();
+    instrumentQueues[Instrument::Lotus] = std::make_shared<ThreadSafeQueue<Order>>();
+    instrumentQueues[Instrument::Tulip] = std::make_shared<ThreadSafeQueue<Order>>();
+    instrumentQueues[Instrument::Orchid] = std::make_shared<ThreadSafeQueue<Order>>();
 }
 
-std::string FlowerExchange::generateOrderId()
+void FlowerExchange::start()
 {
-    // Generates the sequential IDs required by the spec: "ord1", "ord2", "ord3", etc.
-    return "ord" + std::to_string(currentOrderId++);
-}
+    writerThread = std::thread(&FlowerExchange::writerWorker, this);
 
-std::vector<ExecutionReportRow> FlowerExchange::processOrder(Order &order)
-{
-    std::string rejectReason;
+    instrumentThreads.emplace_back(&FlowerExchange::instrumentWorker, this, Instrument::Rose);
+    instrumentThreads.emplace_back(&FlowerExchange::instrumentWorker, this, Instrument::Lavender);
+    instrumentThreads.emplace_back(&FlowerExchange::instrumentWorker, this, Instrument::Lotus);
+    instrumentThreads.emplace_back(&FlowerExchange::instrumentWorker, this, Instrument::Tulip);
+    instrumentThreads.emplace_back(&FlowerExchange::instrumentWorker, this, Instrument::Orchid);
 
-    // 1. Validate the incoming order
-    if (!Validator::isValid(order, rejectReason))
+    producerThread = std::thread(&FlowerExchange::producerWorker, this);
+
+    if (producerThread.joinable())
     {
-        // If validation fails, we immediately generate a Rejected execution report.
-        std::vector<ExecutionReportRow> rejectedReport;
-
-        // According to the sample output on slide 21, rejected orders still receive
-        // a system-generated Order ID in the sequence.
-        std::string rejectedOrderId = generateOrderId();
-
-        rejectedReport.emplace_back(
-            order.clientOrderId,
-            rejectedOrderId,
-            order.instrument,
-            order.side,
-            order.price,
-            order.quantity,
-            ExecStatus::Rejected,
-            Utils::getCurrentTransactionTime(), // We will implement this helper next
-            rejectReason);
-
-        return rejectedReport;
+        producerThread.join();
     }
 
-    // 2. If valid, generate the unique system Order ID for this new order
-    std::string systemOrderId = generateOrderId();
+    for (auto &pair : instrumentQueues)
+    {
+        pair.second->shutdown();
+    }
 
-    // 3. Route to the correct Order Book
-    // We use .at() which is safe here because Validator::isValid already guaranteed
-    // that order.instrument is not Instrument::Invalid.
-    return orderBooks.at(order.instrument).processOrder(order, systemOrderId);
+    for (auto &th : instrumentThreads)
+    {
+        if (th.joinable())
+            th.join();
+    }
+
+    outputQueue.shutdown();
+
+    if (writerThread.joinable())
+    {
+        writerThread.join();
+    }
+}
+
+void FlowerExchange::producerWorker()
+{
+    Order order;
+    while (reader->readNextOrder(order))
+    {
+        std::string rejectReason;
+        if (!Validator::isValid(order, rejectReason))
+        {
+            std::vector<ExecutionReportRow> rejectedReport;
+            std::string rejectedOrderId = "ord" + std::to_string(currentOrderId++);
+
+            rejectedReport.emplace_back(
+                order.clientOrderId,
+                rejectedOrderId,
+                order.instrument,
+                order.side,
+                order.price,
+                order.quantity,
+                ExecStatus::Rejected,
+                Utils::getCurrentTransactionTime(),
+                rejectReason);
+
+            outputQueue.push(std::move(rejectedReport));
+        }
+        else
+        {
+            order.systemOrderId = "ord" + std::to_string(currentOrderId++);
+            instrumentQueues[order.instrument]->push(order);
+        }
+    }
+}
+
+void FlowerExchange::instrumentWorker(Instrument inst)
+{
+    OrderBook orderBook(inst);
+    Order order;
+    while (instrumentQueues[inst]->pop(order))
+    {
+        std::vector<ExecutionReportRow> reports = orderBook.processOrder(order, order.systemOrderId);
+        outputQueue.push(std::move(reports));
+    }
+}
+
+void FlowerExchange::writerWorker()
+{
+    std::vector<ExecutionReportRow> allExecutions;
+    std::vector<ExecutionReportRow> batch;
+
+    while (outputQueue.pop(batch))
+    {
+        allExecutions.insert(allExecutions.end(), batch.begin(), batch.end());
+    }
+
+    if (!allExecutions.empty() && writer)
+    {
+        writer->writeExecutions(allExecutions);
+    }
 }

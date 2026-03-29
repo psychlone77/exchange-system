@@ -6,7 +6,7 @@ bool Validator::isValid(const Order &order, std::string &rejectReason)
     // populate the rejectReason string and immediately short-circuit (return false).
     if (order.clientOrderId.empty())
     {
-        rejectReason = "Missing Client Order ID";
+        rejectReason = "Missing Cl. Ord.ID";
         return false;
     }
 
