@@ -8,5 +8,5 @@ class IOrderReader
 public:
     virtual ~IOrderReader() = default;
 
-    virtual std::vector<Order> readOrders() = 0;
+    virtual bool readNextOrder(Order &order) = 0;
 };
